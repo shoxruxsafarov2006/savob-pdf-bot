@@ -1,11 +1,16 @@
+import logging
 import google.generativeai as genai
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-# 1. Tezkor AI sozlamasi
+# Logging sozlamasi
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+# AI sozlamasi
 genai.configure(api_key="AQ.Ab8RN6LD-JkobynJYdHRg2SqckdZdTjCxsqXI3Ia-ReXLEiA_A")
 model = genai.GenerativeModel('gemini-1.5-flash')
 
+# Bosqichlar
 LANGUAGE, MAIN_MENU, SLIDE_NAME, SLIDE_COUNT = range(4)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -18,36 +23,34 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == 'Tilni tanlash': return await start(update, context)
+    if update.message.text == 'Tilni tanlash': 
+        return await start(update, context)
     context.user_data['type'] = update.message.text
     await update.message.reply_text("Mavzuni kiriting:")
     return SLIDE_NAME
 
 async def slide_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['topic'] = update.message.text
-    await update.message.reply_text("Necha varaq bo'lsin? (faqat son yozing)")
+    await update.message.reply_text("Ma'lumot qancha bo'lsin? (masalan: 100 so'z)")
     return SLIDE_COUNT
 
 async def slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = context.user_data['topic']
     type_ = context.user_data['type']
     count = update.message.text
-    
-    await update.message.reply_text("Tayyorlanyapti...")
-    
-    # Tezkor prompt
-    prompt = f"Mavzu: {topic}. {count} varaqli {type_} uchun qisqa va aniq ma'lumot yozib ber."
+    await update.message.reply_text("Tayyorlanyapti, kuting...")
     
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(f"Mavzu: {topic}. {count} miqdorida {type_} uchun ma'lumot yoz.")
         await update.message.reply_text(response.text)
     except Exception as e:
-        await update.message.reply_text("Kechirasiz, xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
-    
+        await update.message.reply_text("Xatolik yuz berdi, qayta urinib ko'ring.")
     return ConversationHandler.END
 
 if __name__ == '__main__':
+    # Tokeningiz
     app = ApplicationBuilder().token("8923674018:AAFVp9TIGFLgmNj5hgY3UbLSCLAxg04L5Ss").build()
+    
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -58,5 +61,6 @@ if __name__ == '__main__':
         },
         fallbacks=[CommandHandler('start', start)],
     )
+    
     app.add_handler(conv_handler)
     app.run_polling()
