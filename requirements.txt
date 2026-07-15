@@ -2,3 +2,4 @@ pyTelegramBotAPI
 fpdf2
 Flask
 gunicorn
+google-generativeai
