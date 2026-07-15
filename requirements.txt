@@ -1,2 +1,5 @@
 python-telegram-bot
 google-generativeai
+python-telegram-bot
+google-generativeai
+fpdf2
