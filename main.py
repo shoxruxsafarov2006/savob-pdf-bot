@@ -2,9 +2,9 @@ import google.generativeai as genai
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-# 1. AI sozlamasi
+# 1. Tezkor AI sozlamasi
 genai.configure(api_key="AQ.Ab8RN6LD-JkobynJYdHRg2SqckdZdTjCxsqXI3Ia-ReXLEiA_A")
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 LANGUAGE, MAIN_MENU, SLIDE_NAME, SLIDE_COUNT = range(4)
 
@@ -25,15 +25,25 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def slide_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['topic'] = update.message.text
-    await update.message.reply_text("Necha varaq bo'lsin?")
+    await update.message.reply_text("Necha varaq bo'lsin? (faqat son yozing)")
     return SLIDE_COUNT
 
 async def slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = context.user_data['topic']
     type_ = context.user_data['type']
-    await update.message.reply_text("Sizga ma'lumot tayyorlayapman, biroz kuting...")
-    response = model.generate_content(f"Mavzu: {topic}. Turi: {type_}. Iltimos, buni qisqa va tushunarli qilib yozib ber.")
-    await update.message.reply_text(response.text)
+    count = update.message.text
+    
+    await update.message.reply_text("Tayyorlanyapti...")
+    
+    # Tezkor prompt
+    prompt = f"Mavzu: {topic}. {count} varaqli {type_} uchun qisqa va aniq ma'lumot yozib ber."
+    
+    try:
+        response = model.generate_content(prompt)
+        await update.message.reply_text(response.text)
+    except Exception as e:
+        await update.message.reply_text("Kechirasiz, xatolik yuz berdi. Iltimos, qayta urinib ko'ring.")
+    
     return ConversationHandler.END
 
 if __name__ == '__main__':
