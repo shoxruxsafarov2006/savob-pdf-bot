@@ -1,0 +1,4 @@
+pyTelegramBotAPI
+fpdf2
+Flask
+gunicorn
