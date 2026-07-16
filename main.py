@@ -1,66 +1,49 @@
+import os
 import logging
+from fpdf import FPDF
 import google.generativeai as genai
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Logging sozlamasi
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-
-# AI sozlamasi
+# Sozlamalar
+logging.basicConfig(level=logging.INFO)
 genai.configure(api_key="AQ.Ab8RN6LD-JkobynJYdHRg2SqckdZdTjCxsqXI3Ia-ReXLEiA_A")
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Bosqichlar
-LANGUAGE, MAIN_MENU, SLIDE_NAME, SLIDE_COUNT = range(4)
+# PDF yaratish
+def create_pdf(text, filename="slayd.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    # Matnni tozalash
+    text = text.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 10, txt=text)
+    pdf.output(filename)
+    return filename
 
+# Bot buyruqlari
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Salom! Tilni tanlang:", reply_markup=ReplyKeyboardMarkup([['O\'zbekcha', 'English']], one_time_keyboard=True))
-    return LANGUAGE
+    await update.message.reply_text("Mavzuni yozing, men sizga PDF shaklida slayd tayyorlab beraman:")
 
-async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_keyboard = [['Slayd', 'Taqdimot'], ['Glossary', 'Tilni tanlash']]
-    await update.message.reply_text("Asosiy menyu:", reply_markup=ReplyKeyboardMarkup(menu_keyboard, resize_keyboard=True))
-    return MAIN_MENU
-
-async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == 'Tilni tanlash': 
-        return await start(update, context)
-    context.user_data['type'] = update.message.text
-    await update.message.reply_text("Mavzuni kiriting:")
-    return SLIDE_NAME
-
-async def slide_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['topic'] = update.message.text
-    await update.message.reply_text("Ma'lumot qancha bo'lsin? (masalan: 100 so'z)")
-    return SLIDE_COUNT
-
-async def slide_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = context.user_data['topic']
-    type_ = context.user_data['type']
-    count = update.message.text
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = update.message.text
     await update.message.reply_text("Tayyorlanyapti, kuting...")
     
     try:
-        response = model.generate_content(f"Mavzu: {topic}. {count} miqdorida {type_} uchun ma'lumot yoz.")
-        await update.message.reply_text(response.text)
+        # AI dan qisqa javob olish
+        response = model.generate_content(f"{topic} haqida qisqa va aniq 5 ta asosiy fikr yoz.")
+        
+        # PDF yaratish va yuborish
+        filename = create_pdf(response.text)
+        await update.message.reply_document(document=open(filename, 'rb'))
+        
+        # Faylni tozalash
+        os.remove(filename)
     except Exception as e:
-        await update.message.reply_text("Xatolik yuz berdi, qayta urinib ko'ring.")
-    return ConversationHandler.END
+        await update.message.reply_text(f"Xatolik yuz berdi: {str(e)}")
 
 if __name__ == '__main__':
-    # Tokeningiz
     app = ApplicationBuilder().token("8923674018:AAFVp9TIGFLgmNj5hgY3UbLSCLAxg04L5Ss").build()
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
-            MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu_handler)],
-            SLIDE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, slide_name)],
-            SLIDE_COUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, slide_count)],
-        },
-        fallbacks=[CommandHandler('start', start)],
-    )
-    
-    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.run_polling()
