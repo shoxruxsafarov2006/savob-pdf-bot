@@ -23,7 +23,7 @@ Thread(target=run).start()
 
 user_data = {}
 
-# --- Yordamchi menyular ---
+# --- Menyu funksiyalari ---
 def get_lang_menu():
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("🇺🇿 O'zbekcha", callback_data="lang_uz"))
@@ -55,48 +55,60 @@ def start(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("lang_"))
 def set_lang(call):
     lang = call.data.split("_")[1]
-    user_data[call.message.chat.id] = {"lang": lang}
-    bot.edit_message_text("Kerakli menyuni tanlang:", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(lang))
+    user_data[call.message.chat.id] = {"lang": lang, "step": "menu"}
+    bot.edit_message_text("Tanlandi! Kerakli menyuni tanlang:", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(lang))
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
     if chat_id not in user_data: return start(message)
     
+    # 5-tugma: Tilni o'zgartirish
     if "5." in message.text: return start(message)
     
+    # Rejim tanlash
     if "mode" not in user_data[chat_id]:
         user_data[chat_id]["mode"] = message.text
-        bot.send_message(chat_id, "Mavzuni yozing:")
-    elif "topic" not in user_data[chat_id]:
+        user_data[chat_id]["step"] = "topic"
+        bot.send_message(chat_id, "Endi qaysi mavzuda tayyorlash kerakligini yozing:")
+        
+    # Mavzu tanlash
+    elif user_data[chat_id].get("step") == "topic":
         user_data[chat_id]["topic"] = message.text
-        bot.send_message(chat_id, "Dizaynni tanlang:", reply_markup=get_design_menu())
-    elif "pages" not in user_data[chat_id]:
+        user_data[chat_id]["step"] = "design"
+        bot.send_message(chat_id, "Yaxshi! Endi 15 ta dizayndan birini tanlang:", reply_markup=get_design_menu())
+        
+    # Varaqlar soni
+    elif user_data[chat_id].get("step") == "pages":
         try:
             pages = int(message.text)
             if 5 <= pages <= 40:
                 user_data[chat_id]["pages"] = pages
                 generate_document(chat_id)
-            else: bot.send_message(chat_id, "5-40 oralig'ida raqam kiriting!")
-        except: bot.send_message(chat_id, "Faqat raqam kiriting!")
+            else: bot.send_message(chat_id, "Iltimos, 5 dan 40 gacha bo'lgan sonni kiriting!")
+        except: bot.send_message(chat_id, "Iltimos, faqat raqam kiriting!")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("design_"))
 def set_design(call):
-    user_data[call.message.chat.id]["design"] = call.data.split("_")[1]
-    bot.send_message(call.message.chat.id, "Varaqlar sonini kiriting (5-40):")
+    chat_id = call.message.chat.id
+    user_data[chat_id]["design"] = call.data.split("_")[1]
+    user_data[chat_id]["step"] = "pages"
+    bot.edit_message_text("Dizayn tanlandi! Endi necha varaq bo'lishini yozing (5-40):", chat_id, call.message.message_id)
 
 def generate_document(chat_id):
-    msg = bot.send_message(chat_id, "⏳ Tayyorlanmoqda... 0%")
+    msg = bot.send_message(chat_id, "⏳ PDF tayyorlanmoqda... 0%")
     for i in range(1, 6):
         time.sleep(1)
-        bot.edit_message_text(f"⏳ Tayyorlanmoqda... {i*20}%", chat_id, msg.message_id)
+        bot.edit_message_text(f"⏳ PDF tayyorlanmoqda... {i*20}%", chat_id, msg.message_id)
     
-    # AI qismi va PDF yaratish
+    # PDF yaratish
     file_name = f"{chat_id}.pdf"
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"Mavzu: {user_data[chat_id]['topic']} (Rejim: {user_data[chat_id]['mode']})", ln=True, align='C')
+    data = user_data[chat_id]
+    pdf.cell(200, 10, txt=f"Mavzu: {data['topic']}", ln=True, align='C')
+    pdf.cell(200, 10, txt=f"Rejim: {data['mode']}, Dizayn: {data['design']}", ln=True, align='C')
     pdf.output(file_name)
     
     with open(file_name, "rb") as doc: bot.send_document(chat_id, doc)
