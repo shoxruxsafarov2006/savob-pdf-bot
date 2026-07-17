@@ -2,4 +2,4 @@ pyTelegramBotAPI
 google-generativeai
 fpdf2
 flask
-
+Pillow
