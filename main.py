@@ -6,6 +6,7 @@ import google.generativeai as genai
 from flask import Flask
 from threading import Thread
 from fpdf import FPDF
+from PIL import Image
 
 # Sozlamalar
 API_KEY = "AQ.Ab8RN6JExLw1QCatlmSjQ9rahzUtHEUo1NhFFQsRFyisxrY_xQ"
@@ -42,11 +43,6 @@ def get_main_menu(lang):
     markup.add(labels[0], labels[1]); markup.add(labels[2], labels[3]); markup.add(labels[4])
     return markup
 
-def get_design_menu():
-    markup = types.InlineKeyboardMarkup(row_width=3)
-    markup.add(*[types.InlineKeyboardButton(f"Dizayn {i}", callback_data=f"design_{i}") for i in range(1, 16)])
-    return markup
-
 # --- Bot mantiqi ---
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -55,45 +51,43 @@ def start(message):
 @bot.callback_query_handler(func=lambda call: call.data.startswith("lang_"))
 def set_lang(call):
     lang = call.data.split("_")[1]
-    user_data[call.message.chat.id] = {"lang": lang, "step": "menu"}
+    user_data[call.message.chat.id] = {"lang": lang}
     bot.edit_message_text("Tanlandi! Kerakli menyuni tanlang:", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu(lang))
+
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message):
+    chat_id = message.chat.id
+    if chat_id in user_data and user_data[chat_id].get("step") == "wait_for_photo":
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        bg_path = f"bg_{chat_id}.jpg"
+        with open(bg_path, 'wb') as new_file: new_file.write(downloaded_file)
+        user_data[chat_id]["bg"] = bg_path
+        user_data[chat_id]["step"] = "pages"
+        bot.send_message(chat_id, "Fon qabul qilindi! Endi necha varaq bo'lishini yozing (5-40):")
 
 @bot.message_handler(func=lambda message: True)
 def handle_text(message):
     chat_id = message.chat.id
     if chat_id not in user_data: return start(message)
+    if "5." in message.text or message.text == "/start": return start(message)
     
-    # 5-tugma: Tilni o'zgartirish
-    if "5." in message.text: return start(message)
-    
-    # Rejim tanlash
     if "mode" not in user_data[chat_id]:
         user_data[chat_id]["mode"] = message.text
         user_data[chat_id]["step"] = "topic"
         bot.send_message(chat_id, "Endi qaysi mavzuda tayyorlash kerakligini yozing:")
-        
-    # Mavzu tanlash
     elif user_data[chat_id].get("step") == "topic":
         user_data[chat_id]["topic"] = message.text
-        user_data[chat_id]["step"] = "design"
-        bot.send_message(chat_id, "Yaxshi! Endi 15 ta dizayndan birini tanlang:", reply_markup=get_design_menu())
-        
-    # Varaqlar soni
+        user_data[chat_id]["step"] = "wait_for_photo"
+        bot.send_message(chat_id, "Yaxshi! Endi PDF uchun fon rasmini yuboring:")
     elif user_data[chat_id].get("step") == "pages":
         try:
             pages = int(message.text)
             if 5 <= pages <= 40:
                 user_data[chat_id]["pages"] = pages
                 generate_document(chat_id)
-            else: bot.send_message(chat_id, "Iltimos, 5 dan 40 gacha bo'lgan sonni kiriting!")
-        except: bot.send_message(chat_id, "Iltimos, faqat raqam kiriting!")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("design_"))
-def set_design(call):
-    chat_id = call.message.chat.id
-    user_data[chat_id]["design"] = call.data.split("_")[1]
-    user_data[chat_id]["step"] = "pages"
-    bot.edit_message_text("Dizayn tanlandi! Endi necha varaq bo'lishini yozing (5-40):", chat_id, call.message.message_id)
+            else: bot.send_message(chat_id, "5 dan 40 gacha son kiriting!")
+        except: bot.send_message(chat_id, "Iltimos, raqam formatida kiriting!")
 
 def generate_document(chat_id):
     msg = bot.send_message(chat_id, "⏳ PDF tayyorlanmoqda... 0%")
@@ -101,18 +95,22 @@ def generate_document(chat_id):
         time.sleep(1)
         bot.edit_message_text(f"⏳ PDF tayyorlanmoqda... {i*20}%", chat_id, msg.message_id)
     
-    # PDF yaratish
-    file_name = f"{chat_id}.pdf"
+    data = user_data[chat_id]
     pdf = FPDF()
     pdf.add_page()
+    if "bg" in data:
+        pdf.image(data["bg"], x=0, y=0, w=210, h=297)
+    
     pdf.set_font("Arial", size=12)
-    data = user_data[chat_id]
     pdf.cell(200, 10, txt=f"Mavzu: {data['topic']}", ln=True, align='C')
-    pdf.cell(200, 10, txt=f"Rejim: {data['mode']}, Dizayn: {data['design']}", ln=True, align='C')
+    
+    file_name = f"{chat_id}.pdf"
     pdf.output(file_name)
     
     with open(file_name, "rb") as doc: bot.send_document(chat_id, doc)
     os.remove(file_name)
+    if "bg" in data and os.path.exists(data["bg"]): os.remove(data["bg"])
+    
     bot.send_message(chat_id, "✅ Hammasi tayyor! Bizning xizmat sizga ma'qul tushdi deb umid qilamiz. 🌟")
     del user_data[chat_id]
 
