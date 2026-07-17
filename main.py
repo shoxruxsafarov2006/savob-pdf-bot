@@ -2,35 +2,30 @@ import telebot
 from telebot import types
 import os
 import google.generativeai as genai
-from flask import Flask
-from threading import Thread
+from flask import Flask, request
 from fpdf import FPDF
-from PIL import Image
+import threading
 
-# Sozlamalar
-API_KEY = "AIzaSyD-..." # O'zingizning haqiqiy Google API kalitingizni yozing
-BOT_TOKEN = "8923674018:AAGq00YUBiTmpKjPKbQ7twP6JxHM0yvBPL4"
+# Sozlamalar (Render'da Environment Variables dan olish yaxshiroq)
+API_KEY = os.getenv("API_KEY", "SIZNING_API_KEYINGIZ")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8923674018:AAGq00YUBiTmpKjPKbQ7twP6JxHM0yvBPL4")
 
 genai.configure(api_key=API_KEY)
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Flask (Render uchun)
+# Flask serveri
 app = Flask(__name__)
-@app.route('/')
-def home(): return "Bot ishlayapti!"
-def run(): app.run(host='0.0.0.0', port=10000)
-Thread(target=run).start()
 
 user_data = {}
 
-# --- Yordamchi Funksiyalar ---
+# --- Bot Mantiqi ---
+
 def generate_content(topic, mode):
     model = genai.GenerativeModel('gemini-1.5-flash')
     prompt = f"{topic} mavzusi bo'yicha {mode} uchun professional ma'lumotlarni jadval ko'rinishida (Atama | Ta'rif) formatida ber."
     response = model.generate_content(prompt)
     return response.text
 
-# --- Bot Mantiqi ---
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.send_message(message.chat.id, "Xush kelibsiz! Tilni tanlang:", reply_markup=types.InlineKeyboardMarkup().add(
@@ -45,6 +40,7 @@ def set_lang(call):
 
 @bot.message_handler(func=lambda message: message.text in ["Taqdimot", "Slayd", "Krossvord", "Glossariy"])
 def set_mode(message):
+    if message.chat.id not in user_data: user_data[message.chat.id] = {}
     user_data[message.chat.id]["mode"] = message.text
     user_data[message.chat.id]["step"] = "topic"
     bot.send_message(message.chat.id, "Mavzuni yozing:")
@@ -69,7 +65,6 @@ def handle_photo(message):
 def create_pdf(chat_id):
     data = user_data[chat_id]
     msg = bot.send_message(chat_id, "⏳ PDF tayyorlanmoqda...")
-    
     content = generate_content(data["topic"], data["mode"])
     
     pdf = FPDF()
@@ -92,11 +87,25 @@ def create_pdf(chat_id):
     pdf.output(file_name)
     
     with open(file_name, "rb") as f: bot.send_document(chat_id, f)
-    
     os.remove(file_name)
     os.remove(data["bg"])
     del user_data[chat_id]
     bot.send_message(chat_id, "✅ Tayyor!")
 
+# --- Webhook qismi ---
+
+@app.route(f'/{BOT_TOKEN}', methods=['POST'])
+def get_message():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route('/')
+def home():
+    return "Bot ishlamoqda!"
+
 if __name__ == "__main__":
-    bot.polling(none_stop=True)
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://savob-pdf-bot.onrender.com/{BOT_TOKEN}")
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
