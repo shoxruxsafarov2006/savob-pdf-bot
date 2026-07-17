@@ -4,7 +4,7 @@ from flask import Flask
 from threading import Thread
 from fpdf import FPDF
 
-TOKEN = "8923674018:AAFVp9TIGFLgmNj5hgy3UbLSCLAXg04L5Ss"
+TOKEN = "8923674018:AAGq00YUBiTmpKjPKbQ7twP6JxHM0yvBPL4"
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
